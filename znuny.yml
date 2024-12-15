@@ -1,0 +1,105 @@
+---
+- hosts: "{{ target }}"
+  become: yes
+  tasks:
+  - name: Update all installed packages using APT module
+    apt:
+      name: '*'
+      state: latest
+      update_cache: yes
+      only_upgrade: yes
+    register: apt_update_status
+    become: yes
+
+  - name: Remove packages not needed anymore
+    apt:
+      autoremove: yes
+
+  - name: Update apt cache and install all required packages for znuny
+    apt:
+      name: dstat, glances, tmux, nmap, mc, lsof, net-tools, tcpdump, apache2, mariadb-client, mariadb-server, tar, bash-completion, libapache2-mod-perl2, libdbd-mysql-perl, libtimedate-perl, libnet-dns-perl, libnet-ldap-perl, libio-socket-ssl-perl, libpdf-api2-perl, libsoap-lite-perl, libtext-csv-xs-perl, libjson-xs-perl, libapache-dbi-perl, libxml-libxml-perl, libxml-libxslt-perl, libyaml-perl, libarchive-zip-perl, libcrypt-eksblowfish-perl, libencode-hanextra-perl, libmail-imapclient-perl, libtemplate-perl, libdatetime-perl, libmoo-perl, libyaml-libyaml-perl, libjavascript-minifier-xs-perl, libcss-minifier-xs-perl, libauthen-sasl-perl, libauthen-ntlm-perl, libhash-merge-perl, libical-parser-perl, libspreadsheet-xlsx-perl, libdata-uuid-perl, acl
+      update_cache: yes
+
+  - name: copy znuny config for mysql
+    copy:
+      src: /home/user/ansible/playbooks/files/50-znuny_config.cnf
+      dest: /etc/mysql/mariadb.conf.d/50-znuny_config.cnf
+
+  - name: Restart mysql
+    ansible.builtin.service:
+      name: mariadb
+      state: restarted
+ 
+        #- name: Download znuny latest 7.1
+        #    ansible.builtin.get_url:
+        #      url: https://download.znuny.org/releases/znuny-latest-7.1.tar.gz
+        #      dest: /opt/znuny-latest-7.1.tar.gz
+        #      mode: '0440'
+
+        #  - name: Extract foo.tgz into /var/lib/foo
+        #    ansible.builtin.unarchive:
+        #      src: /opt/znuny-latest-7.1.tar.gz
+        #      dest: /opt/znuny-latest-7.1
+        #
+  - name: Download/unarchive Packages znuny
+    unarchive:
+      src: https://download.znuny.org/releases/znuny-latest-7.1.tar.gz
+      dest: /opt
+      owner: znuny
+      group: znuny
+      remote_src: yes
+      creates: /opt/znuny-7.1.3
+        
+  - name: Create symlink
+    file:
+      src: /opt/znuny-7.1.3/
+      dest: /opt/znuny
+      state: link
+
+  - name: add znuny user
+    ansible.builtin.user:
+      name: znuny
+      comment: Znuny user
+      group: www-data
+      shell: /bin/bash
+      create_home: false  
+      home: /opt/znuny
+
+  - name: Copy file with owner and permissions
+    ansible.builtin.copy:
+      src: /opt/znuny/Kernel/Config.pm.dist
+      dest: /opt/znuny/Kernel/Config.pm
+      remote_src: yes
+      owner: znuny
+      group: www-data
+      mode: '0644'
+
+  - name: run permission script
+    ansible.builtin.shell: /opt/znuny/bin/znuny.SetPermissions.pl
+
+
+      #  - name: create cronjobs
+      #    ansible.builtin.command: for foo in *.dist; do cp $foo `basename $foo .dist`; done
+#    become: yes
+#    become_user: znuny
+#    args:
+#      chdir: /opt/znuny/var/cron
+    
+  - name: create symlink for znuny apache conf
+    file:
+      src: /opt/znuny/scripts/apache2-httpd.include.conf
+      dest: /etc/apache2/conf-available/znuny.conf
+      state: link   
+
+        #  - name: Disables the Apache2 module mpm_event
+        #    community.general.apache2_module:
+        #      state: absent
+        #      name: mpm_event
+
+  - name: Enable the Apache2 module mpm_prefork headers filter perl
+    community.general.apache2_module:
+      state: present
+      name: mpm_prefork, headers, filter, perl
+
+  - name: enable apache conf
+    ansible.builtin.command: a2enconf znuny
